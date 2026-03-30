@@ -5,7 +5,7 @@ on:
     # Her saatin 55. dakikasında (UTC)
     # Türkiye saatiyle XX:55'te çeker
     # yagis00Now verisi saat başına yakın daha doğru olur
-    - cron: '55 * * * *'
+    - cron: '50 * * * *'
   workflow_dispatch:
 
 jobs:
