@@ -2,9 +2,10 @@ name: MGM Veri Cek
 
 on:
   schedule:
-    # Her saat başı UTC (= Türkiye saati -3)
-    # UTC 00,01,02...23 = Türkiye 03,04,05...02
-    - cron: '0 * * * *'
+    # Her saatin 55. dakikasında (UTC)
+    # Türkiye saatiyle XX:55'te çeker
+    # yagis00Now verisi saat başına yakın daha doğru olur
+    - cron: '55 * * * *'
   workflow_dispatch:
 
 jobs:
