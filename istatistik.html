@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İzmir Yağış İstatistikleri</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: { extend: { fontFamily: { display: ['Instrument Sans','sans-serif'], mono: ['JetBrains Mono','monospace'] } } }
+        }
+    </script>
+    <style>
+        :root {
+            --bg-primary:#0a0e17; --bg-secondary:#111827; --bg-tertiary:#1a2234;
+            --accent-cyan:#22d3ee; --text-primary:#e2e8f0; --text-muted:#64748b;
+            --border-color:#1e293b; --row-hover:rgba(34,211,238,0.04); --row-alt:rgba(255,255,255,0.015);
+        }
+        * { box-sizing:border-box; }
+        body { background:var(--bg-primary); color:var(--text-primary); font-family:'JetBrains Mono',monospace; min-height:100vh; overflow-x:hidden; }
+        body::before { content:''; position:fixed; inset:0; background: radial-gradient(ellipse 80% 50% at 20% 0%,rgba(34,211,238,0.06) 0%,transparent 60%), radial-gradient(ellipse 60% 40% at 80% 100%,rgba(59,130,246,0.05) 0%,transparent 60%); pointer-events:none; z-index:0; }
+        .grid-overlay { position:fixed; inset:0; background-image:linear-gradient(rgba(34,211,238,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,0.02) 1px,transparent 1px); background-size:60px 60px; pointer-events:none; z-index:0; }
+        .content { position:relative; z-index:1; }
+
+        .header-zone { position:relative; border-bottom:1px solid var(--border-color); background:linear-gradient(180deg,rgba(17,24,39,0.9) 0%,rgba(10,14,23,0.95) 100%); backdrop-filter:blur(20px); }
+        .header-zone::after { content:''; position:absolute; bottom:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,var(--accent-cyan),transparent); opacity:0.4; }
+
+        .tab-btn { padding:8px 20px; font-size:11px; font-family:'Instrument Sans',sans-serif; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; border-radius:6px; cursor:pointer; transition:all 0.15s ease; border:1px solid transparent; color:var(--text-muted); background:transparent; }
+        .tab-btn:hover { color:var(--accent-cyan); border-color:var(--border-color); }
+        .tab-btn.active { background:rgba(34,211,238,0.08); border-color:rgba(34,211,238,0.3); color:var(--accent-cyan); }
+
+        .dd-select { background:var(--bg-tertiary); border:1px solid var(--border-color); color:var(--text-primary); font-family:'JetBrains Mono',monospace; font-size:11px; padding:6px 12px; border-radius:6px; outline:none; cursor:pointer; transition:border-color 0.15s ease; }
+        .dd-select:hover, .dd-select:focus { border-color:var(--accent-cyan); }
+        .dd-label { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); font-family:'Instrument Sans',sans-serif; font-weight:600; }
+        .dd-arrow { font-size:12px; color:#334155; }
+
+        .stat-card { background:rgba(17,24,39,0.7); border:1px solid var(--border-color); backdrop-filter:blur(12px); transition:border-color 0.2s ease,transform 0.15s ease; }
+        .stat-card:hover { border-color:rgba(34,211,238,0.2); transform:translateY(-1px); }
+
+        .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+        .bar-label { font-size:11px; color:var(--text-muted); white-space:nowrap; width:170px; text-overflow:ellipsis; overflow:hidden; font-family:'Instrument Sans',sans-serif; font-weight:500; }
+        .bar-track { flex:1; height:6px; background:rgba(30,41,59,0.8); border-radius:3px; overflow:hidden; }
+        .bar-fill { height:100%; border-radius:3px; background:linear-gradient(90deg,#0ea5e9,#38bdf8); transition:width 0.8s cubic-bezier(0.22,1,0.36,1); }
+        .bar-val { font-size:11px; font-family:'JetBrains Mono',monospace; color:#7dd3fc; width:65px; text-align:right; }
+
+        .data-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+        .data-table-wrap::-webkit-scrollbar { height:6px; }
+        .data-table-wrap::-webkit-scrollbar-track { background:var(--bg-secondary); }
+        .data-table-wrap::-webkit-scrollbar-thumb { background:var(--border-color); border-radius:3px; }
+        table { border-collapse:separate; border-spacing:0; width:100%; }
+        thead th { position:sticky; top:0; z-index:10; background:var(--bg-secondary); border-bottom:2px solid var(--border-color); padding:11px 14px; text-align:left; font-family:'Instrument Sans',sans-serif; font-weight:600; font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-muted); cursor:pointer; user-select:none; white-space:nowrap; transition:color 0.15s ease,background 0.15s ease; }
+        thead th:hover { color:var(--accent-cyan); background:var(--bg-tertiary); }
+        thead th.sorted { color:var(--accent-cyan); }
+        thead th .sa { display:inline-block; margin-left:4px; font-size:10px; opacity:0; transition:opacity 0.15s ease,transform 0.15s ease; }
+        thead th:hover .sa { opacity:0.4; }
+        thead th.sorted .sa { opacity:1; }
+        thead th.sorted.desc .sa { transform:rotate(180deg); }
+        tbody tr { transition:background 0.12s ease; }
+        tbody tr:nth-child(even) { background:var(--row-alt); }
+        tbody tr:hover { background:var(--row-hover); }
+        tbody td { padding:9px 14px; font-size:12.5px; color:var(--text-primary); border-bottom:1px solid rgba(30,41,59,0.5); white-space:nowrap; }
+        tbody td:first-child { font-family:'Instrument Sans',sans-serif; font-weight:500; color:#f1f5f9; }
+        .val-none { color:#475569; }
+
+        @keyframes fadeInUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        .fade-in { animation:fadeInUp 0.4s ease-out forwards; }
+        .loading-skeleton { background:linear-gradient(90deg,var(--bg-secondary) 25%,var(--bg-tertiary) 50%,var(--bg-secondary) 75%); background-size:200% 100%; animation:shimmer 1.5s ease-in-out infinite; border-radius:4px; }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .empty-state { text-align:center; padding:40px 0; color:var(--text-muted); font-size:12px; }
+    </style>
+</head>
+<body>
+<div class="grid-overlay"></div>
+<div class="content">
+
+    <!-- HEADER -->
+    <header class="header-zone">
+        <div class="max-w-[1400px] mx-auto px-6 py-5 flex items-center justify-between flex-wrap gap-4">
+            <div>
+                <div class="flex items-center gap-2.5 mb-1">
+                    <svg class="w-5 h-5 text-sky-400 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z"/>
+                    </svg>
+                    <h1 class="font-display font-bold text-lg tracking-tight text-slate-100">İzmir Yağış İstatistikleri</h1>
+                </div>
+                <p class="text-[11px] text-slate-500 font-mono tracking-wide">MGM Arşiv · yagis24Saat bazlı kümülatif hesap</p>
+            </div>
+            <a href="index.html" class="text-[11px] font-mono text-slate-500 hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
+                Son Durum'a Dön
+            </a>
+        </div>
+    </header>
+
+    <!-- SEKME + DROPDOWNLAR -->
+    <div class="max-w-[1400px] mx-auto px-6 pt-5 pb-0">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div class="flex items-center gap-2">
+                <button class="tab-btn active" onclick="switchTab('gunluk')">Günlük</button>
+                <button class="tab-btn" onclick="switchTab('aylik')">Aylık</button>
+                <button class="tab-btn" onclick="switchTab('yillik')">Yıllık</button>
+            </div>
+
+            <div class="flex items-center gap-3 flex-wrap">
+                <!-- Yıl (hep görünür) -->
+                <div class="flex items-center gap-2">
+                    <span class="dd-label">Yıl</span>
+                    <select id="dd-yil" class="dd-select" onchange="onYilDeg()"></select>
+                </div>
+
+                <!-- Ay (aylik + gunluk) -->
+                <div id="dd-ay-wrap" class="hidden items-center gap-2">
+                    <span class="dd-arrow">›</span>
+                    <span class="dd-label">Ay</span>
+                    <select id="dd-ay" class="dd-select" onchange="onAyDeg()"></select>
+                </div>
+
+                <!-- Gün (sadece gunluk) -->
+                <div id="dd-gun-wrap" class="hidden items-center gap-2">
+                    <span class="dd-arrow">›</span>
+                    <span class="dd-label">Gün</span>
+                    <select id="dd-gun" class="dd-select" onchange="render()"></select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="max-w-[1400px] mx-auto px-6 py-8">
+        <div class="space-y-3">
+            <div class="loading-skeleton h-24 w-full rounded-lg"></div>
+            <div class="loading-skeleton h-10 w-full"></div>
+            <div class="loading-skeleton h-8 w-full"></div>
+            <div class="loading-skeleton h-8 w-full"></div>
+        </div>
+    </div>
+
+    <!-- Error -->
+    <div id="error" class="hidden max-w-[1400px] mx-auto px-6 py-16 text-center">
+        <svg class="w-12 h-12 mx-auto text-red-400/60 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+        </svg>
+        <p class="text-slate-400 font-display text-sm">Veri bulunamadı</p>
+        <p class="text-slate-600 text-xs mt-1 font-mono">Önce python mgm-veri.py ile veri çekin</p>
+    </div>
+
+    <!-- ANA İÇERİK -->
+    <div id="main" class="hidden">
+        <!-- Özet Kartlar -->
+        <div class="max-w-[1400px] mx-auto px-6 pt-5 pb-2">
+            <div id="ozet-kartlar" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+        </div>
+
+        <!-- Bar Chart -->
+        <div class="max-w-[1400px] mx-auto px-6 pt-4 pb-2">
+            <div class="rounded-xl border border-slate-800/80 bg-[#0d1220]/80 p-5">
+                <div class="flex items-center gap-2 mb-5">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"/>
+                    </svg>
+                    <h2 id="bar-baslik" class="font-display font-bold text-sm text-slate-200"></h2>
+                </div>
+                <div id="bar-chart"></div>
+            </div>
+        </div>
+
+        <!-- Tablo -->
+        <div class="max-w-[1400px] mx-auto px-6 py-4">
+            <div class="rounded-lg border border-slate-800/80 overflow-hidden bg-[#0d1220]/80">
+                <div class="px-4 py-3 border-b border-slate-800/60 flex items-center justify-between">
+                    <span id="tablo-baslik" class="font-display font-semibold text-sm text-slate-300"></span>
+                    <span id="tablo-alt" class="text-[11px] font-mono text-slate-600"></span>
+                </div>
+                <div class="data-table-wrap" style="max-height:60vh;overflow-y:auto;">
+                    <table><thead><tr id="ist-head"></tr></thead><tbody id="ist-body"></tbody></table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="index.js"></script>
+<script>
+const AY_ADI  = ['','Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const AY_KISA = ['','Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+
+function validNum(v) {
+    if (v === -9999 || v === '-9999' || v === '' || v === null || v === undefined) return null;
+    const n = parseFloat(v);
+    return (!isNaN(n) && n > -9000) ? n : null;
+}
+
+// ── VERİ YAPISI ──────────────────────────────────────────────────────────────
+// gunler["2026-03-30"]["İstAdi"] = max(yagis24Saat) o gün
+let gunler = {};
+let yillar = [];
+let aktifTab = 'gunluk';
+let sortKey = '__toplam', sortAsc = false;
+let aktifTablo = [], aktifSutunlar = [];
+
+function arsivdenGunler() {
+    const g = {};
+    Object.entries(CEKIM_ARSIVI).forEach(([zaman, kayitlar]) => {
+        const tarih = zaman.slice(0, 10);
+        if (!g[tarih]) g[tarih] = {};
+        kayitlar.forEach(k => {
+            const v = validNum(k.yagis24Saat);
+            if (v !== null && (g[tarih][k.istasyonAdi] === undefined || v > g[tarih][k.istasyonAdi]))
+                g[tarih][k.istasyonAdi] = v;
+        });
+    });
+    return g;
+}
+
+// ── DROPDOWN DOLDURMA ─────────────────────────────────────────────────────────
+function doldurYil() {
+    const sel = document.getElementById('dd-yil');
+    sel.innerHTML = '';
+    yillar.forEach(y => { const o = document.createElement('option'); o.value = y; o.textContent = y; sel.appendChild(o); });
+}
+
+function doldurAy() {
+    const yil = document.getElementById('dd-yil').value;
+    const aySet = new Set(Object.keys(gunler).filter(t => t.startsWith(yil)).map(t => t.slice(5, 7)));
+    const aylar = Array.from(aySet).sort().reverse();
+    const sel = document.getElementById('dd-ay');
+    sel.innerHTML = '';
+    aylar.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = AY_ADI[parseInt(m)]; sel.appendChild(o); });
+}
+
+function doldurGun() {
+    const yil = document.getElementById('dd-yil').value;
+    const ay  = document.getElementById('dd-ay').value;
+    const gunList = Object.keys(gunler).filter(t => t.startsWith(`${yil}-${ay}`)).sort().reverse();
+    const sel = document.getElementById('dd-gun');
+    sel.innerHTML = '';
+    gunList.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t;
+        const [y, m, d] = t.split('-');
+        o.textContent = `${d} ${AY_KISA[parseInt(m)]} ${y}`;
+        sel.appendChild(o);
+    });
+}
+
+// ── SEKME DEĞİŞTİRME ─────────────────────────────────────────────────────────
+function switchTab(tab) {
+    aktifTab = tab;
+    document.querySelectorAll('.tab-btn').forEach((btn, i) =>
+        btn.classList.toggle('active', ['gunluk','aylik','yillik'][i] === tab)
+    );
+    const ayW  = document.getElementById('dd-ay-wrap');
+    const gunW = document.getElementById('dd-gun-wrap');
+
+    if (tab === 'yillik') {
+        ayW.classList.add('hidden'); ayW.classList.remove('flex');
+        gunW.classList.add('hidden'); gunW.classList.remove('flex');
+    } else if (tab === 'aylik') {
+        ayW.classList.remove('hidden'); ayW.classList.add('flex');
+        gunW.classList.add('hidden'); gunW.classList.remove('flex');
+        doldurAy();
+    } else {
+        ayW.classList.remove('hidden'); ayW.classList.add('flex');
+        gunW.classList.remove('hidden'); gunW.classList.add('flex');
+        doldurAy(); doldurGun();
+    }
+    render();
+}
+
+function onYilDeg() { if (aktifTab !== 'yillik') { doldurAy(); if (aktifTab === 'gunluk') doldurGun(); } render(); }
+function onAyDeg()  { if (aktifTab === 'gunluk') doldurGun(); render(); }
+
+// ── AKTİF VERİ HESABI ────────────────────────────────────────────────────────
+function aktifVeri() {
+    const yil = document.getElementById('dd-yil').value;
+
+    if (aktifTab === 'yillik') {
+        // Sütunlar: aylar. Her istasyonun o aydaki günlük toplamı.
+        const ayVeri = {};
+        Object.entries(gunler).forEach(([tarih, ist]) => {
+            if (!tarih.startsWith(yil)) return;
+            const ay = tarih.slice(5, 7);
+            if (!ayVeri[ay]) ayVeri[ay] = {};
+            Object.entries(ist).forEach(([ad, v]) => { ayVeri[ay][ad] = (ayVeri[ay][ad] || 0) + v; });
+        });
+        const aylar = Object.keys(ayVeri).sort();
+        return {
+            baslik: `${yil} — Yıllık Yağış Özeti (mm)`,
+            altBaslik: `${aylar.length} ay`,
+            kolonEtiketleri: aylar.map(m => ({ key: m, label: AY_KISA[parseInt(m)] })),
+            periyotVeri: ayVeri,
+            barBaslik: `${yil} — Yıl Toplamında En Yoğun 10 İstasyon`
+        };
+    }
+
+    if (aktifTab === 'aylik') {
+        const ay = document.getElementById('dd-ay').value;
+        const prefix = `${yil}-${ay}`;
+        // Sütunlar: günler
+        const gunVeri = {};
+        Object.entries(gunler).forEach(([tarih, ist]) => {
+            if (tarih.startsWith(prefix)) gunVeri[tarih] = ist;
+        });
+        const gunList = Object.keys(gunVeri).sort();
+        return {
+            baslik: `${AY_ADI[parseInt(ay)]} ${yil} — Günlük Yağış (mm)`,
+            altBaslik: `${gunList.length} gün`,
+            kolonEtiketleri: gunList.map(t => { const [,,d] = t.split('-'); return { key: t, label: d }; }),
+            periyotVeri: gunVeri,
+            barBaslik: `${AY_ADI[parseInt(ay)]} ${yil} — Ay Toplamında En Yoğun 10 İstasyon`
+        };
+    }
+
+    // Günlük — tek gün
+    const gun = document.getElementById('dd-gun').value;
+    if (!gun) return { baslik:'', altBaslik:'', kolonEtiketleri:[], periyotVeri:{}, barBaslik:'' };
+    const [y, m, d] = gun.split('-');
+    return {
+        baslik: `${d} ${AY_ADI[parseInt(m)]} ${y} — Yağış (mm)`,
+        altBaslik: 'tek gün',
+        kolonEtiketleri: [{ key: gun, label: `${d}.${m}.${y}` }],
+        periyotVeri: { [gun]: gunler[gun] || {} },
+        barBaslik: `${d} ${AY_ADI[parseInt(m)]} ${y} — En Yoğun 10 İstasyon`
+    };
+}
+
+// ── ÖZET KARTLAR ─────────────────────────────────────────────────────────────
+function buildOzetKartlar(periyotVeri, kolonEtiketleri) {
+    const istTop = {};
+    kolonEtiketleri.forEach(({ key }) =>
+        Object.entries(periyotVeri[key] || {}).forEach(([ad, v]) => { istTop[ad] = (istTop[ad] || 0) + v; })
+    );
+    const vals = Object.values(istTop);
+    const container = document.getElementById('ozet-kartlar');
+    if (!vals.length) { container.innerHTML = ''; return; }
+
+    const genelOrt = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sorted = Object.entries(istTop).sort((a, b) => b[1] - a[1]);
+    const enCok  = sorted[0];
+    const pozitif = sorted.filter(([, v]) => v > 0);
+    const enAz   = pozitif.length ? pozitif[pozitif.length - 1] : enCok;
+    const yagisli = pozitif.length;
+
+    const kartlar = [
+        { label: 'İzmir Geneli Ortalama', value: genelOrt.toFixed(1), unit: 'mm' },
+        { label: 'En Çok Yağış',          value: enCok[1].toFixed(1), unit: 'mm', sub: enCok[0] },
+        { label: 'Yağış Alan İstasyon',   value: yagisli,             unit: `/ ${vals.length} adet` },
+        { label: 'En Az Yağış (>0 mm)',   value: enAz[1].toFixed(1),  unit: 'mm', sub: enAz[0] },
+    ];
+
+    container.innerHTML = '';
+    kartlar.forEach((k, i) => {
+        const div = document.createElement('div');
+        div.className = 'stat-card rounded-lg px-4 py-3.5 fade-in';
+        div.style.cssText = `animation-delay:${i*0.05}s;opacity:0`;
+        div.innerHTML = `
+            <div class="text-[10px] uppercase tracking-widest text-slate-500 font-display font-semibold mb-2">${k.label}</div>
+            <div class="flex items-baseline gap-1.5">
+                <span class="text-2xl font-bold text-slate-100 font-mono tracking-tight">${k.value}</span>
+                <span class="text-xs text-slate-500">${k.unit}</span>
+            </div>
+            ${k.sub ? `<div class="text-[10px] text-slate-600 mt-1 font-display truncate" title="${k.sub}">${k.sub}</div>` : ''}
+        `;
+        container.appendChild(div);
+    });
+}
+
+// ── BAR CHART ─────────────────────────────────────────────────────────────────
+function buildBarChart(periyotVeri, kolonEtiketleri, barBaslik) {
+    const istTop = {};
+    kolonEtiketleri.forEach(({ key }) =>
+        Object.entries(periyotVeri[key] || {}).forEach(([ad, v]) => { istTop[ad] = (istTop[ad] || 0) + v; })
+    );
+    const top10 = Object.entries(istTop).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const maxVal = top10[0]?.[1] || 1;
+    const container = document.getElementById('bar-chart');
+    container.innerHTML = '';
+    document.getElementById('bar-baslik').textContent = barBaslik;
+
+    if (!top10.length) {
+        container.innerHTML = '<div class="empty-state">Bu periyotta yağış verisi yok</div>';
+        return;
+    }
+    top10.forEach(([ad, val], i) => {
+        const pct = (val / maxVal) * 100;
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        row.innerHTML = `
+            <span class="bar-label" title="${ad}">${ad}</span>
+            <div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>
+            <span class="bar-val">${val.toFixed(1)} mm</span>
+        `;
+        container.appendChild(row);
+        requestAnimationFrame(() => setTimeout(() => { row.querySelector('.bar-fill').style.width = pct + '%'; }, 80 + i * 50));
+    });
+}
+
+// ── TABLO ─────────────────────────────────────────────────────────────────────
+function buildTablo(periyotVeri, kolonEtiketleri, baslik, altBaslik) {
+    const kolonlar = [
+        { key: '__ad', label: 'İstasyon', type: 'string' },
+        ...kolonEtiketleri.map(({ key, label }) => ({ key, label, type: 'number' })),
+        { key: '__toplam', label: 'Toplam', type: 'number' }
+    ];
+    const istSet = new Set();
+    kolonEtiketleri.forEach(({ key }) => Object.keys(periyotVeri[key] || {}).forEach(ad => istSet.add(ad)));
+
+    const satirlar = Array.from(istSet).map(ad => {
+        const row = { __ad: ad };
+        let toplam = 0;
+        kolonEtiketleri.forEach(({ key }) => {
+            const v = periyotVeri[key]?.[ad] ?? null;
+            row[key] = v;
+            if (v !== null) toplam += v;
+        });
+        row.__toplam = toplam;
+        return row;
+    }).sort((a, b) => b.__toplam - a.__toplam);
+
+    aktifTablo = satirlar; aktifSutunlar = kolonlar;
+    sortKey = '__toplam'; sortAsc = false;
+    document.getElementById('tablo-baslik').textContent = baslik;
+    document.getElementById('tablo-alt').textContent = `${istSet.size} istasyon · ${altBaslik}`;
+    renderThead(kolonlar);
+    renderTbody(satirlar, kolonlar);
+}
+
+function renderThead(kolonlar) {
+    const tr = document.getElementById('ist-head');
+    tr.innerHTML = '';
+    kolonlar.forEach(col => {
+        const th = document.createElement('th');
+        const isSorted = sortKey === col.key;
+        th.className = isSorted ? (sortAsc ? 'sorted' : 'sorted desc') : '';
+        th.innerHTML = `${col.label}<span class="sa">▲</span>`;
+        th.addEventListener('click', () => {
+            if (sortKey === col.key) sortAsc = !sortAsc;
+            else { sortKey = col.key; sortAsc = col.type === 'string'; }
+            const sorted = [...aktifTablo].sort((a, b) => {
+                let va = a[col.key], vb = b[col.key];
+                if (col.type === 'number') { va = va ?? -Infinity; vb = vb ?? -Infinity; return sortAsc ? va - vb : vb - va; }
+                va = (va||'').toLocaleLowerCase('tr'); vb = (vb||'').toLocaleLowerCase('tr');
+                return sortAsc ? va.localeCompare(vb,'tr') : vb.localeCompare(va,'tr');
+            });
+            aktifTablo = sorted;
+            renderThead(aktifSutunlar);
+            renderTbody(sorted, aktifSutunlar);
+        });
+        tr.appendChild(th);
+    });
+}
+
+function renderTbody(satirlar, kolonlar) {
+    const tbody = document.getElementById('ist-body');
+    tbody.innerHTML = '';
+    if (!satirlar.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = kolonlar.length; td.className = 'empty-state'; td.textContent = 'Bu periyotta veri yok';
+        tr.appendChild(td); tbody.appendChild(tr); return;
+    }
+    satirlar.forEach(row => {
+        const tr = document.createElement('tr');
+        kolonlar.forEach(col => {
+            const td = document.createElement('td');
+            const val = row[col.key];
+            if (col.key === '__ad') { td.textContent = val; }
+            else if (val === null || val === undefined) { td.textContent = '—'; td.className = 'val-none'; }
+            else {
+                td.textContent = val.toFixed(1);
+                if      (col.key === '__toplam') td.style.color = '#7dd3fc';
+                else if (val > 20) td.style.color = '#f87171';
+                else if (val > 5)  td.style.color = '#fbbf24';
+                else if (val > 0)  td.style.color = '#34d399';
+                else td.className = 'val-none';
+            }
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+function render() {
+    const { baslik, altBaslik, kolonEtiketleri, periyotVeri, barBaslik } = aktifVeri();
+    buildOzetKartlar(periyotVeri, kolonEtiketleri);
+    buildBarChart(periyotVeri, kolonEtiketleri, barBaslik);
+    buildTablo(periyotVeri, kolonEtiketleri, baslik, altBaslik);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+function init() {
+    if (typeof CEKIM_ARSIVI === 'undefined' || !Object.keys(CEKIM_ARSIVI).length) {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('error').classList.remove('hidden');
+        return;
+    }
+    gunler = arsivdenGunler();
+    yillar = Array.from(new Set(Object.keys(gunler).map(t => t.slice(0, 4)))).sort().reverse();
+    doldurYil();
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('main').classList.remove('hidden');
+    switchTab('gunluk');
+}
+
+init();
+</script>
+</body>
+</html>

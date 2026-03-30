@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İzmir Meteoroloji Verileri</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['Instrument Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1a2234;
+            --accent-cyan: #22d3ee;
+            --accent-blue: #3b82f6;
+            --accent-teal: #14b8a6;
+            --text-primary: #e2e8f0;
+            --text-muted: #64748b;
+            --border-color: #1e293b;
+            --row-hover: rgba(34, 211, 238, 0.04);
+            --row-alt: rgba(255, 255, 255, 0.015);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 20% 0%, rgba(34, 211, 238, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(59, 130, 246, 0.05) 0%, transparent 60%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .grid-overlay {
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(34, 211, 238, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 211, 238, 0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .content { position: relative; z-index: 1; }
+
+        .header-zone {
+            position: relative;
+            border-bottom: 1px solid var(--border-color);
+            background: linear-gradient(180deg, rgba(17, 24, 39, 0.9) 0%, rgba(10, 14, 23, 0.95) 100%);
+            backdrop-filter: blur(20px);
+        }
+
+        .header-zone::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+            opacity: 0.4;
+        }
+
+        .pulse-dot {
+            width: 8px; height: 8px;
+            background: #10b981;
+            border-radius: 50%;
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+            50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        .data-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .data-table-wrap::-webkit-scrollbar { height: 6px; }
+        .data-table-wrap::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        .data-table-wrap::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+        .data-table-wrap::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+        table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1200px; }
+
+        thead th {
+            position: sticky; top: 0; z-index: 10;
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            padding: 12px 14px;
+            text-align: left;
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 600; font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            cursor: pointer; user-select: none; white-space: nowrap;
+            transition: color 0.15s ease, background 0.15s ease;
+        }
+        thead th:hover { color: var(--accent-cyan); background: var(--bg-tertiary); }
+        thead th.sorted { color: var(--accent-cyan); }
+        thead th .sort-arrow {
+            display: inline-block; margin-left: 4px; font-size: 10px; opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        thead th:hover .sort-arrow { opacity: 0.4; }
+        thead th.sorted .sort-arrow { opacity: 1; }
+        thead th.sorted.desc .sort-arrow { transform: rotate(180deg); }
+
+        tbody tr { transition: background 0.12s ease; }
+        tbody tr:nth-child(even) { background: var(--row-alt); }
+        tbody tr:hover { background: var(--row-hover); }
+
+        tbody td {
+            padding: 10px 14px; font-size: 12.5px; font-weight: 400;
+            color: var(--text-primary);
+            border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+            white-space: nowrap;
+        }
+        tbody td:first-child {
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 500; font-size: 12.5px; color: #f1f5f9;
+            max-width: 240px; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        .val-high { color: #f87171; }
+        .val-mid { color: #fbbf24; }
+        .val-low { color: #34d399; }
+        .val-none { color: #475569; }
+
+        .stat-card {
+            background: rgba(17, 24, 39, 0.7);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(12px);
+            transition: border-color 0.2s ease, transform 0.15s ease;
+        }
+        .stat-card:hover {
+            border-color: rgba(34, 211, 238, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .loading-skeleton {
+            background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--bg-tertiary) 50%, var(--bg-secondary) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+            border-radius: 4px;
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeInUp 0.4s ease-out forwards; }
+        .fade-in-d1 { animation-delay: 0.05s; opacity: 0; }
+        .fade-in-d2 { animation-delay: 0.1s; opacity: 0; }
+        .fade-in-d3 { animation-delay: 0.15s; opacity: 0; }
+        .fade-in-d4 { animation-delay: 0.2s; opacity: 0; }
+
+        /* ===== RAIN TOP 5 SECTION ===== */
+        .rain-section {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .rain-section::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                linear-gradient(180deg, rgba(56, 189, 248, 0.03) 0%, rgba(14, 165, 233, 0.06) 50%, rgba(2, 132, 199, 0.03) 100%);
+            border-radius: 12px;
+            pointer-events: none;
+        }
+
+        .rain-bg {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            border-radius: 12px;
+            pointer-events: none;
+        }
+
+        .raindrop {
+            position: absolute;
+            width: 2px;
+            background: linear-gradient(180deg, transparent, rgba(56, 189, 248, 0.3), transparent);
+            animation: rainfall linear infinite;
+            opacity: 0;
+        }
+
+        @keyframes rainfall {
+            0% { transform: translateY(-20px); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(300px); opacity: 0; }
+        }
+
+        .rain-card {
+            position: relative;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(56, 189, 248, 0.12);
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+            transition: all 0.25s ease;
+            overflow: hidden;
+        }
+
+        .rain-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, var(--rain-intensity-color, rgba(56, 189, 248, 0.6)), transparent);
+        }
+
+        .rain-card:hover {
+            border-color: rgba(56, 189, 248, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(56, 189, 248, 0.08);
+        }
+
+        .rain-rank {
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 800;
+            font-size: 36px;
+            line-height: 1;
+            background: linear-gradient(180deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.05) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .rain-bar-track {
+            height: 4px;
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .rain-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            background: linear-gradient(90deg, #0ea5e9, #38bdf8, #7dd3fc);
+            transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        @keyframes rainCardIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .rain-card-anim {
+            animation: rainCardIn 0.5s ease-out forwards;
+            opacity: 0;
+        }
+
+        .export-btn {
+            padding: 6px 14px;
+            font-size: 11px;
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .export-btn:hover {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            background: rgba(34, 211, 238, 0.05);
+        }
+
+        @media print {
+            body { background: #fff !important; color: #000 !important; }
+            body::before, .grid-overlay, .header-zone, #summary-cards, #export-bar { display: none !important; }
+            .content { z-index: auto; }
+            table { min-width: auto !important; }
+            thead th { background: #f3f4f6 !important; color: #111 !important; font-size: 9px !important; padding: 6px 8px !important; border-bottom: 2px solid #333 !important; }
+            thead th .sort-arrow { display: none !important; }
+            tbody td { color: #111 !important; font-size: 10px !important; padding: 5px 8px !important; border-bottom: 1px solid #ccc !important; }
+            tbody tr:nth-child(even) { background: #f9fafb !important; }
+            .val-high { color: #dc2626 !important; }
+            .val-mid { color: #d97706 !important; }
+            .val-low { color: #059669 !important; }
+            .val-none { color: #9ca3af !important; }
+            .data-table-wrap { max-height: none !important; overflow: visible !important; }
+            .rounded-lg { border: 1px solid #ccc !important; }
+            @page { size: landscape; margin: 10mm; }
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-overlay"></div>
+
+    <div class="content">
+        <!-- Header -->
+        <header class="header-zone">
+            <div class="max-w-[1600px] mx-auto px-6 py-5 flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <div>
+                        <div class="flex items-center gap-2.5 mb-1">
+                            <svg class="w-5 h-5 text-cyan-400 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+                            </svg>
+                            <h1 class="font-display font-bold text-lg tracking-tight text-slate-100">İzmir Meteoroloji Verileri</h1>
+                        </div>
+                        <p class="text-[11px] text-slate-500 font-mono tracking-wide">MGM Son Durum Takip Paneli</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 flex-wrap">
+                    <div id="stats-bar" class="flex items-center gap-5 text-[11px] text-slate-500 font-mono"></div>
+                    <div id="cekim-wrap" class="hidden items-center gap-2">
+                        <span class="text-[10px] uppercase tracking-widest text-slate-600 font-display font-semibold whitespace-nowrap">Çekim:</span>
+                        <select id="cekim-select" onchange="loadSnapshot(this.value)" style="background:var(--bg-tertiary);border:1px solid var(--border-color);color:var(--text-primary);font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;border-radius:6px;outline:none;cursor:pointer;">
+                        </select>
+                    </div>
+                    <a href="istatistik.html" class="text-[11px] font-mono text-slate-500 hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" /></svg>
+                        İstatistikler
+                    </a>
+                    <div class="flex items-center gap-2">
+                        <div class="pulse-dot"></div>
+                        <span class="text-[11px] text-emerald-400/80 font-mono">AKTİF</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <div class="max-w-[1600px] mx-auto px-6 pt-6 pb-2">
+            <div id="summary-cards" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+        </div>
+
+        <!-- Top 5 Rain Section -->
+        <div id="rain-section" class="hidden max-w-[1600px] mx-auto px-6 pt-5 pb-1">
+            <div class="rain-section rounded-xl border border-sky-500/10 p-5">
+                <div class="rain-bg" id="rain-bg"></div>
+                <div class="relative z-10">
+                    <div class="flex items-center gap-3 mb-4">
+                        <svg class="w-5 h-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+                        </svg>
+                        <h2 class="font-display font-bold text-sm tracking-tight text-sky-300">En Yoğun Yağış (24 Saat)</h2>
+                        <span class="text-[10px] font-mono text-sky-600 bg-sky-500/10 px-2 py-0.5 rounded-full">TOP 5</span>
+                    </div>
+                    <div id="rain-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Bar -->
+        <div id="export-bar" class="hidden max-w-[1600px] mx-auto px-6 pt-3 pb-1 flex items-center gap-3">
+            <span class="text-[10px] uppercase tracking-widest text-slate-600 font-display font-semibold mr-1">Dışa Aktar:</span>
+            <button class="export-btn" onclick="exportExcel()">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                Excel (.xlsx)
+            </button>
+            <button class="export-btn" onclick="exportCSV()">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+                CSV
+            </button>
+            <button class="export-btn" onclick="exportPDF()">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18.75 12h.008v.008h-.008V12zm-8.25 0h.008v.008H10.5V12z"/></svg>
+                PDF
+            </button>
+        </div>
+
+        <!-- Table -->
+        <div class="max-w-[1600px] mx-auto px-6 py-4">
+            <div class="rounded-lg border border-slate-800/80 overflow-hidden bg-[#0d1220]/80">
+                <div class="data-table-wrap" style="max-height: 75vh; overflow-y: auto;">
+                    <table id="data-table">
+                        <thead>
+                            <tr id="table-head"></tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loading" class="max-w-[1600px] mx-auto px-6 py-8">
+            <div class="space-y-3">
+                <div class="loading-skeleton h-10 w-full"></div>
+                <div class="loading-skeleton h-8 w-full"></div>
+                <div class="loading-skeleton h-8 w-full"></div>
+                <div class="loading-skeleton h-8 w-full"></div>
+                <div class="loading-skeleton h-8 w-full"></div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden max-w-[1600px] mx-auto px-6 py-16 text-center">
+            <svg class="w-12 h-12 mx-auto text-red-400/60 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <p class="text-slate-400 font-display text-sm">Veri yüklenemedi</p>
+            <p class="text-slate-600 text-xs mt-1 font-mono">Önce python mgm-veri.py komutunu çalıştırın</p>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+    <script>
+        const COLUMNS = [
+            { key: 'istasyonAdi',  label: 'İstasyon Adı',      type: 'string' },
+            { key: 'aktuelBasinc', label: 'Basınç (hPa)',      type: 'number', decimals: 1 },
+            { key: 'yagis00Now',   label: "Yağış (00'dan)",    type: 'number', decimals: 1 },
+            { key: 'yagis10Dk',    label: 'Yağış (10dk)',      type: 'number', decimals: 1 },
+            { key: 'yagis1Saat',   label: 'Yağış (1sa)',       type: 'number', decimals: 1 },
+            { key: 'yagis6Saat',   label: 'Yağış (6sa)',       type: 'number', decimals: 1 },
+            { key: 'yagis12Saat',  label: 'Yağış (12sa)',      type: 'number', decimals: 1 },
+            { key: 'yagis24Saat',  label: 'Yağış (24sa)',      type: 'number', decimals: 1 },
+            { key: 'ruzgarHiz',    label: 'Rüzgar (km/s)',     type: 'number', decimals: 1 },
+            { key: 'ruzgarYon',    label: 'Rüzgar Yönü (°)',   type: 'number', decimals: 0 },
+            { key: 'sicaklik',     label: 'Sıcaklık (°C)',     type: 'number', decimals: 1 },
+            { key: 'nem',          label: 'Nem (%)',            type: 'number', decimals: 0 },
+        ];
+
+        let rawData = [];
+        let sortKey = null;
+        let sortAsc = true;
+
+        function formatVal(val, col) {
+            if (val === -9999 || val === '-9999' || val === '' || val === null || val === undefined) return '-';
+            if (col.type === 'number') {
+                const n = parseFloat(val);
+                if (isNaN(n)) return '-';
+                return n.toFixed(col.decimals ?? 1);
+            }
+            return val;
+        }
+
+        function getNumericVal(val) {
+            if (val === -9999 || val === '-9999' || val === '' || val === null || val === undefined) return -Infinity;
+            const n = parseFloat(val);
+            return isNaN(n) ? -Infinity : n;
+        }
+
+        function colorClass(val, key) {
+            if (val === -9999 || val === '-9999' || val === '' || val === null) return 'val-none';
+            const n = parseFloat(val);
+            if (isNaN(n)) return '';
+            if (key === 'sicaklik') { return n >= 30 ? 'val-high' : n >= 15 ? 'val-mid' : 'val-low'; }
+            if (key === 'nem') { return n >= 80 ? 'val-high' : n >= 50 ? 'val-mid' : 'val-low'; }
+            if (key.startsWith('yagis')) { return n > 10 ? 'val-high' : n > 0 ? 'val-mid' : ''; }
+            if (key === 'ruzgarHiz') { return n >= 40 ? 'val-high' : n >= 20 ? 'val-mid' : ''; }
+            return '';
+        }
+
+        function buildHead() {
+            const tr = document.getElementById('table-head');
+            tr.innerHTML = '';
+            COLUMNS.forEach(col => {
+                const th = document.createElement('th');
+                th.dataset.key = col.key;
+                const isSorted = sortKey === col.key;
+                th.className = isSorted ? (sortAsc ? 'sorted' : 'sorted desc') : '';
+                th.innerHTML = `${col.label}<span class="sort-arrow">▲</span>`;
+                th.addEventListener('click', () => handleSort(col.key, col.type));
+                tr.appendChild(th);
+            });
+        }
+
+        function buildBody(data) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                COLUMNS.forEach(col => {
+                    const td = document.createElement('td');
+                    const val = item[col.key];
+                    const formatted = formatVal(val, col);
+                    td.textContent = formatted;
+                    if (formatted === '-') td.className = 'val-none';
+                    else if (col.type === 'number') td.className = colorClass(val, col.key);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        function handleSort(key, type) {
+            if (sortKey === key) { sortAsc = !sortAsc; }
+            else { sortKey = key; sortAsc = type === 'string'; }
+
+            const sorted = [...rawData].sort((a, b) => {
+                let va = a[key], vb = b[key];
+                if (type === 'number') {
+                    va = getNumericVal(va); vb = getNumericVal(vb);
+                    return sortAsc ? va - vb : vb - va;
+                } else {
+                    va = (va || '').toString().toLocaleLowerCase('tr');
+                    vb = (vb || '').toString().toLocaleLowerCase('tr');
+                    return sortAsc ? va.localeCompare(vb, 'tr') : vb.localeCompare(va, 'tr');
+                }
+            });
+            buildHead();
+            buildBody(sorted);
+        }
+
+        function validNum(val) {
+            if (val === -9999 || val === '-9999' || val === '' || val === null || val === undefined) return null;
+            const n = parseFloat(val);
+            return (!isNaN(n) && n > -9000) ? n : null;
+        }
+
+        function buildSummary(data) {
+            const temps = data.map(d => validNum(d.sicaklik)).filter(n => n !== null);
+            const humids = data.map(d => validNum(d.nem)).filter(n => n !== null);
+            const winds = data.map(d => validNum(d.ruzgarHiz)).filter(n => n !== null);
+
+            const avgTemp = temps.length ? (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : '-';
+            const maxTemp = temps.length ? Math.max(...temps).toFixed(1) : '-';
+            const avgHumid = humids.length ? Math.round(humids.reduce((a, b) => a + b, 0) / humids.length) : '-';
+            const maxWind = winds.length ? Math.max(...winds).toFixed(1) : '-';
+
+            const cards = [
+                { label: 'Ort. Sıcaklık', value: avgTemp, unit: '°C' },
+                { label: 'Maks. Sıcaklık', value: maxTemp, unit: '°C' },
+                { label: 'Ort. Nem', value: avgHumid, unit: '%' },
+                { label: 'Maks. Rüzgar', value: maxWind, unit: 'km/s' },
+            ];
+
+            const container = document.getElementById('summary-cards');
+            container.innerHTML = '';
+            cards.forEach((card, i) => {
+                const div = document.createElement('div');
+                div.className = `stat-card rounded-lg px-4 py-3.5 fade-in fade-in-d${i + 1}`;
+                div.innerHTML = `
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500 font-display font-semibold mb-2">${card.label}</div>
+                    <div class="flex items-baseline gap-1.5">
+                        <span class="text-2xl font-bold text-slate-100 font-mono tracking-tight">${card.value}</span>
+                        <span class="text-xs text-slate-500">${card.unit}</span>
+                    </div>`;
+                container.appendChild(div);
+            });
+        }
+
+        function buildStatsBar(data) {
+            const bar = document.getElementById('stats-bar');
+            const cekme = data[0]?.cekmeZamani || '-';
+            bar.innerHTML = `
+                <span class="text-slate-600">|</span>
+                <span>${data.length} istasyon</span>
+                <span class="text-slate-600">|</span>
+                <span>Son güncelleme: <span class="text-slate-300">${cekme}</span></span>`;
+        }
+
+        // ==================== RAIN TOP 5 ====================
+
+        function buildRainTop5(data) {
+            const withRain = data
+                .map(d => ({ name: d.istasyonAdi, val: validNum(d.yagis24Saat) }))
+                .filter(d => d.val !== null && d.val > 0)
+                .sort((a, b) => b.val - a.val)
+                .slice(0, 5);
+
+            if (withRain.length === 0) return;
+
+            document.getElementById('rain-section').classList.remove('hidden');
+
+            // Yağmur damlaları oluştur
+            const rainBg = document.getElementById('rain-bg');
+            rainBg.innerHTML = '';
+            for (let i = 0; i < 40; i++) {
+                const drop = document.createElement('div');
+                drop.className = 'raindrop';
+                drop.style.left = Math.random() * 100 + '%';
+                drop.style.height = (15 + Math.random() * 25) + 'px';
+                drop.style.animationDuration = (0.8 + Math.random() * 1.2) + 's';
+                drop.style.animationDelay = Math.random() * 3 + 's';
+                rainBg.appendChild(drop);
+            }
+
+            const maxVal = withRain[0].val;
+            const container = document.getElementById('rain-cards');
+            container.innerHTML = '';
+
+            const intensityColors = [
+                'rgba(239, 68, 68, 0.7)',
+                'rgba(249, 115, 22, 0.6)',
+                'rgba(234, 179, 8, 0.5)',
+                'rgba(56, 189, 248, 0.5)',
+                'rgba(56, 189, 248, 0.3)',
+            ];
+
+            withRain.forEach((item, i) => {
+                const pct = maxVal > 0 ? (item.val / maxVal) * 100 : 0;
+                const card = document.createElement('div');
+                card.className = 'rain-card p-4 rain-card-anim';
+                card.style.animationDelay = (i * 0.1) + 's';
+                card.style.setProperty('--rain-intensity-color', intensityColors[i] || intensityColors[4]);
+
+                card.innerHTML = `
+                    <div class="flex items-start justify-between mb-3">
+                        <span class="rain-rank">${i + 1}</span>
+                        <div class="text-right">
+                            <div class="text-xl font-bold font-mono text-sky-200 tracking-tight">${item.val.toFixed(1)}</div>
+                            <div class="text-[10px] text-sky-500 font-mono">mm</div>
+                        </div>
+                    </div>
+                    <div class="font-display text-[11px] font-semibold text-slate-300 mb-2.5 truncate" title="${item.name}">${item.name}</div>
+                    <div class="rain-bar-track">
+                        <div class="rain-bar-fill" style="width: 0%"></div>
+                    </div>
+                `;
+                container.appendChild(card);
+
+                // Animate bar fill
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
+                        card.querySelector('.rain-bar-fill').style.width = pct + '%';
+                    }, 200 + i * 100);
+                });
+            });
+        }
+
+        // ==================== EXPORT ====================
+
+        function getExportRows() {
+            const headers = COLUMNS.map(c => c.label);
+            const rows = rawData.map(item =>
+                COLUMNS.map(col => {
+                    const val = item[col.key];
+                    if (val === -9999 || val === '-9999' || val === '' || val === null || val === undefined) return '';
+                    if (col.type === 'number') {
+                        const n = parseFloat(val);
+                        return isNaN(n) ? '' : n.toFixed(col.decimals ?? 1);
+                    }
+                    return val;
+                })
+            );
+            return { headers, rows };
+        }
+
+        function exportCSV() {
+            const { headers, rows } = getExportRows();
+            const BOM = '\uFEFF';
+            let csv = BOM + headers.join(';') + '\n';
+            rows.forEach(r => { csv += r.join(';') + '\n'; });
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            downloadBlob(blob, 'izmir_meteoroloji.csv');
+        }
+
+        function exportExcel() {
+            const { headers, rows } = getExportRows();
+
+            // Basit bir XLSX oluştur (XML Spreadsheet formatı - Excel açar)
+            let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            xml += '<?mso-application progid="Excel.Sheet"?>\n';
+            xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n';
+            xml += ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+            xml += '<Styles>\n';
+            xml += '  <Style ss:ID="header"><Font ss:Bold="1" ss:Size="11"/><Interior ss:Color="#D9E1F2" ss:Pattern="Solid"/></Style>\n';
+            xml += '  <Style ss:ID="num"><NumberFormat ss:Format="0.0"/></Style>\n';
+            xml += '</Styles>\n';
+            xml += '<Worksheet ss:Name="Meteoroloji Verileri">\n<Table>\n';
+
+            // Sütun genişlikleri
+            xml += '<Column ss:Width="180"/>\n';
+            for (let i = 1; i < headers.length; i++) xml += '<Column ss:Width="100"/>\n';
+
+            // Başlıklar
+            xml += '<Row>\n';
+            headers.forEach(h => { xml += `  <Cell ss:StyleID="header"><Data ss:Type="String">${escapeXml(h)}</Data></Cell>\n`; });
+            xml += '</Row>\n';
+
+            // Veriler
+            rows.forEach(row => {
+                xml += '<Row>\n';
+                row.forEach((val, i) => {
+                    if (i === 0 || val === '') {
+                        xml += `  <Cell><Data ss:Type="String">${escapeXml(val)}</Data></Cell>\n`;
+                    } else {
+                        xml += `  <Cell ss:StyleID="num"><Data ss:Type="Number">${val}</Data></Cell>\n`;
+                    }
+                });
+                xml += '</Row>\n';
+            });
+
+            xml += '</Table>\n</Worksheet>\n</Workbook>';
+
+            const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+            downloadBlob(blob, 'izmir_meteoroloji.xls');
+        }
+
+        function exportPDF() {
+            window.print();
+        }
+
+        function escapeXml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // ==================== INIT ====================
+
+        function renderData(data) {
+            rawData = data;
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('export-bar').classList.remove('hidden');
+            document.getElementById('export-bar').classList.add('flex');
+            document.getElementById('rain-section').classList.add('hidden');
+
+            buildStatsBar(rawData);
+            buildSummary(rawData);
+            buildRainTop5(rawData);
+            buildHead();
+            buildBody(rawData);
+
+            document.querySelector('.data-table-wrap').parentElement.classList.add('fade-in');
+        }
+
+        function loadSnapshot(key) {
+            if (!key || !CEKIM_ARSIVI[key]) return;
+            renderData(CEKIM_ARSIVI[key]);
+        }
+
+        function init() {
+            // Çoklu çekim arşivi varsa (index.js)
+            if (typeof CEKIM_ARSIVI !== 'undefined' && Object.keys(CEKIM_ARSIVI).length > 0) {
+                const anahtarlar = Object.keys(CEKIM_ARSIVI).sort().reverse(); // en yeni üstte
+
+                const select = document.getElementById('cekim-select');
+                select.innerHTML = '';
+                anahtarlar.forEach(k => {
+                    const opt = document.createElement('option');
+                    opt.value = k;
+                    // "2026-03-30 14:35:00" → "30.03.2026 14:35"
+                    const m = k.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+                    opt.textContent = m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : k;
+                    select.appendChild(opt);
+                });
+
+                const wrap = document.getElementById('cekim-wrap');
+                wrap.classList.remove('hidden');
+                wrap.classList.add('flex');
+
+                // En yeni çekimi yükle
+                renderData(CEKIM_ARSIVI[anahtarlar[0]]);
+                return;
+            }
+
+            // Geriye dönük uyumluluk: eski tek çekim veri.js
+            if (typeof VERI_DATA !== 'undefined' && VERI_DATA.length) {
+                renderData(VERI_DATA);
+                return;
+            }
+
+            // Hiç veri yok
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('error').classList.remove('hidden');
+        }
+
+        init();
+    </script>
+</body>
+</html>
