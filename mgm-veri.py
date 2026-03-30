@@ -3,6 +3,13 @@ import json
 import webbrowser
 import os
 import sys
+import os
+os.environ["TZ"] = "Europe/Istanbul"
+try:
+    import time
+    time.tzset()
+except AttributeError:
+    pass
 from datetime import datetime
 
 # MGM API ayarları
