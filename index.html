@@ -512,6 +512,14 @@
             });
         }
 
+        function formatVeriZamani(veriZamani) {
+            if (!veriZamani) return '';
+            try {
+                const d = new Date(veriZamani);
+                return d.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
+            } catch { return veriZamani; }
+        }
+
         function buildBody(data) {
             const tbody = document.getElementById('table-body');
             tbody.innerHTML = '';
@@ -528,7 +536,12 @@
                     td.textContent = col.key === 'istasyonAdi' ? '📍 ' + formatted : formatted;
                     if (formatted === '-') td.className = 'val-none';
                     else if (col.type === 'number') td.className = colorClass(val, col.key);
-                    if (col.key === 'istasyonAdi') td.style.color = '#22d3ee';
+                    if (col.key === 'istasyonAdi') {
+                        td.style.color = '#22d3ee';
+                        const vz = formatVeriZamani(merkezIst.veriZamani);
+                        if (vz) td.title = `Veri zamanı: ${vz}`;
+                        td.style.cursor = 'help';
+                    }
                     tr.appendChild(td);
                 });
                 tbody.appendChild(tr);
@@ -543,6 +556,11 @@
                     td.textContent = formatted;
                     if (formatted === '-') td.className = 'val-none';
                     else if (col.type === 'number') td.className = colorClass(val, col.key);
+                    if (col.key === 'istasyonAdi') {
+                        const vz = formatVeriZamani(item.veriZamani);
+                        if (vz) td.title = `Veri zamanı: ${vz}`;
+                        td.style.cursor = 'help';
+                    }
                     tr.appendChild(td);
                 });
                 tbody.appendChild(tr);
