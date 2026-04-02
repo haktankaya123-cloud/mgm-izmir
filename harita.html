@@ -295,6 +295,9 @@
         <!-- İstasyon adı toggle -->
         <button id="istasyon-adi-btn" class="toggle-btn" onclick="istasyonAdiToggle()">📍 İstasyon Adı</button>
 
+        <!-- Yağmur efekti toggle -->
+        <button id="rain-btn" class="toggle-btn" onclick="rainToggle()">🌧️ Yağmur Efekti</button>
+
         <a href="index.html" class="back-link">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
@@ -306,6 +309,9 @@
 
 <!-- HARİTA -->
 <div id="map"></div>
+
+<!-- YAĞMUR CANVAS OVERLAY -->
+<canvas id="rain-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:500;display:none;"></canvas>
 
 <!-- LEGEND -->
 <div class="legend" id="legend">
@@ -496,6 +502,15 @@ function haritayiGuncelle() {
     const metrik = document.getElementById('metrik-select').value;
     const m = METRIKLER[metrik];
 
+    // Yağış dışı metrik seçilince rain efektini kapat
+    const yagisMetrikler = ['yagis00Now','yagis1Saat','yagis6Saat','yagis12Saat','yagis24Saat'];
+    if (!yagisMetrikler.includes(metrik) && rainAktif) {
+        rainToggle();
+    }
+
+    // Rain aktifse güncelle
+    rainGuncelle();
+
     // Eski katmanları temizle
     if (markerLayer) map.removeLayer(markerLayer);
     if (heatLayer) map.removeLayer(heatLayer);
@@ -568,6 +583,116 @@ function cekimDegisti() {
     haritayiGuncelle();
 }
 
+// ── YAĞMUR EFEKTİ ────────────────────────────────────────────────────────────
+let rainAktif = false;
+let rainAnimFrame = null;
+let rainDamlaları = [];
+
+function rainToggle() {
+    rainAktif = !rainAktif;
+    document.getElementById('rain-btn').classList.toggle('active', rainAktif);
+    const canvas = document.getElementById('rain-canvas');
+
+    if (rainAktif) {
+        canvas.style.display = 'block';
+        rainDamlaları = [];
+        rainDamlalariOlustur();
+        rainAnime();
+    } else {
+        canvas.style.display = 'none';
+        if (rainAnimFrame) cancelAnimationFrame(rainAnimFrame);
+        rainDamlaları = [];
+    }
+}
+
+function rainDamlalariOlustur() {
+    rainDamlaları = [];
+    const metrik = document.getElementById('metrik-select').value;
+
+    // Sadece yağış metrikleri için çalış
+    const yagisMetrikler = ['yagis00Now','yagis1Saat','yagis6Saat','yagis12Saat','yagis24Saat'];
+    if (!yagisMetrikler.includes(metrik)) return;
+
+    aktifData.forEach(ist => {
+        const enlem = parseFloat(ist.enlem);
+        const boylam = parseFloat(ist.boylam);
+        if (!enlem || !boylam) return;
+
+        const yagis = validNum(ist[metrik]);
+        if (!yagis || yagis <= 0) return;
+
+        const damlaAdet = Math.min(Math.ceil(yagis * 4), 40);
+        const nokta = map.latLngToContainerPoint([enlem, boylam]);
+
+        for (let i = 0; i < damlaAdet; i++) {
+            rainDamlaları.push({
+                baseX: nokta.x,
+                baseY: nokta.y,
+                x: nokta.x + (Math.random() - 0.5) * yagis * 8,
+                y: nokta.y + Math.random() * -100,
+                uzunluk: 8 + Math.random() * 12,
+                hiz: 4 + Math.random() * 6,
+                opasite: 0.3 + Math.random() * 0.5,
+                yagis: yagis,
+                renk: yagis > 10 ? '239,68,68' : yagis > 5 ? '249,115,22' : '56,189,248',
+                alan: yagis * 8,
+            });
+        }
+    });
+}
+
+function rainAnime() {
+    const canvas = document.getElementById('rain-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    rainDamlaları.forEach(d => {
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - 1, d.y + d.uzunluk);
+        ctx.strokeStyle = `rgba(${d.renk}, ${d.opasite})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        d.y += d.hiz;
+
+        // Ekrandan çıkınca veya istasyon bölgesinden çıkınca sıfırla
+        const nokta = map.latLngToContainerPoint([
+            parseFloat(aktifData.find(ist => validNum(ist.yagis1Saat) > 0)?.enlem || 38.42),
+            parseFloat(aktifData.find(ist => validNum(ist.yagis1Saat) > 0)?.boylam || 27.14)
+        ]);
+
+        if (d.y > canvas.height + 20) {
+            const yeniNokta = map.latLngToContainerPoint([
+                parseFloat(aktifData.find(ist => {
+                    const v = validNum(ist.yagis1Saat);
+                    return v && v > 0 && ist.enlem;
+                })?.enlem || 38.42),
+                parseFloat(aktifData.find(ist => {
+                    const v = validNum(ist.yagis1Saat);
+                    return v && v > 0 && ist.boylam;
+                })?.boylam || 27.14)
+            ]);
+            d.x = d.baseX + (Math.random() - 0.5) * d.alan;
+            d.y = -20;
+        }
+    });
+
+    if (rainAktif) {
+        rainAnimFrame = requestAnimationFrame(rainAnime);
+    }
+}
+
+// Harita hareket edince damlaları güncelle
+function rainGuncelle() {
+    if (rainAktif) {
+        rainDamlaları = [];
+        rainDamlalariOlustur();
+    }
+}
+
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function init() {
     if (typeof CEKIM_ARSIVI === 'undefined') {
@@ -592,6 +717,10 @@ function init() {
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
+
+    map.on('moveend zoomend', () => {
+        rainGuncelle();
+    });
 
     // Dropdown doldur
     const select = document.getElementById('cekim-select');
