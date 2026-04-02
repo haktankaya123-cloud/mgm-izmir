@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>İzmir Meteoroloji Haritası</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #0a0e17;
+            color: #e2e8f0;
+            font-family: 'JetBrains Mono', monospace;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* HEADER */
+        .header {
+            position: relative;
+            background: linear-gradient(180deg, rgba(17,24,39,0.95) 0%, rgba(10,14,23,0.98) 100%);
+            border-bottom: 1px solid #1e293b;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            z-index: 1000;
+            backdrop-filter: blur(20px);
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #22d3ee, transparent);
+            opacity: 0.4;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 12px; }
+
+        .header-title {
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 700;
+            font-size: 15px;
+            color: #f1f5f9;
+        }
+
+        .header-sub {
+            font-size: 10px;
+            color: #475569;
+            margin-top: 2px;
+        }
+
+        .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+        /* Kontroller */
+        .ctrl-group { display: flex; align-items: center; gap: 6px; }
+        .ctrl-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748b;
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 600;
+        }
+
+        .ctrl-select {
+            background: #1a2234;
+            border: 1px solid #1e293b;
+            color: #e2e8f0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .ctrl-select:hover, .ctrl-select:focus { border-color: #22d3ee; }
+
+        .toggle-btn {
+            padding: 5px 12px;
+            font-size: 11px;
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 600;
+            border-radius: 6px;
+            border: 1px solid #1e293b;
+            background: #1a2234;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .toggle-btn.active {
+            background: rgba(34,211,238,0.1);
+            border-color: rgba(34,211,238,0.4);
+            color: #22d3ee;
+        }
+        .toggle-btn:hover { border-color: #22d3ee; color: #22d3ee; }
+
+        .back-link {
+            font-size: 11px;
+            color: #475569;
+            text-decoration: none;
+            font-family: 'Instrument Sans', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.15s;
+        }
+        .back-link:hover { color: #22d3ee; }
+
+        /* HARITA */
+        #map {
+            flex: 1;
+            width: 100%;
+        }
+
+        /* Özel popup stili */
+        .leaflet-popup-content-wrapper {
+            background: #111827;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            color: #e2e8f0;
+        }
+        .leaflet-popup-tip { background: #111827; }
+        .leaflet-popup-content { margin: 0; }
+
+        .popup-wrap { padding: 14px; min-width: 220px; }
+        .popup-title {
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 700;
+            font-size: 13px;
+            color: #22d3ee;
+            margin-bottom: 4px;
+        }
+        .popup-ilce {
+            font-size: 10px;
+            color: #475569;
+            margin-bottom: 10px;
+            font-family: 'Instrument Sans', sans-serif;
+        }
+        .popup-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .popup-item {
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
+        .popup-item-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #475569;
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        .popup-item-val {
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .popup-item-unit { font-size: 9px; color: #64748b; }
+        .popup-zaman {
+            font-size: 9px;
+            color: #334155;
+            margin-top: 8px;
+            font-family: 'Instrument Sans', sans-serif;
+        }
+
+        /* Legend */
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 10px;
+            z-index: 999;
+            background: rgba(17,24,39,0.92);
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 10px;
+            backdrop-filter: blur(10px);
+        }
+        .legend-title {
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+        /* Loading */
+        #loading {
+            position: absolute;
+            inset: 0;
+            background: #0a0e17;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .loading-text { color: #475569; font-size: 12px; }
+        .loading-dot {
+            width: 8px; height: 8px;
+            background: #22d3ee;
+            border-radius: 50%;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* Çekim dropdown */
+        #cekim-select { max-width: 160px; }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="loading-dot"></div>
+    <span class="loading-text">Harita yükleniyor...</span>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-left">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#22d3ee" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/>
+        </svg>
+        <div>
+            <div class="header-title">İzmir Meteoroloji Haritası</div>
+            <div class="header-sub">MGM İstasyon Ağı · Anlık Veri</div>
+        </div>
+    </div>
+
+    <div class="header-right">
+        <!-- Çekim seçici -->
+        <div class="ctrl-group">
+            <span class="ctrl-label">Çekim</span>
+            <select id="cekim-select" class="ctrl-select" onchange="cekimDegisti()"></select>
+        </div>
+
+        <!-- Metrik seçici -->
+        <div class="ctrl-group">
+            <span class="ctrl-label">Göster</span>
+            <select id="metrik-select" class="ctrl-select" onchange="haritayiGuncelle()">
+                <option value="yagis00Now">Yağış (00'dan)</option>
+                <option value="yagis1Saat">Yağış (1sa)</option>
+                <option value="yagis6Saat">Yağış (6sa)</option>
+                <option value="yagis12Saat">Yağış (12sa)</option>
+                <option value="yagis24Saat">Yağış (24sa)</option>
+                <option value="sicaklik">Sıcaklık</option>
+                <option value="nem">Nem</option>
+                <option value="ruzgarHiz">Rüzgar Hızı</option>
+                <option value="aktuelBasinc">Basınç</option>
+            </select>
+        </div>
+
+        <!-- Heatmap toggle -->
+        <button id="heatmap-btn" class="toggle-btn" onclick="heatmapToggle()">🔥 Isı Haritası</button>
+
+        <a href="index.html" class="back-link">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
+            </svg>
+            Son Durum
+        </a>
+    </div>
+</div>
+
+<!-- HARİTA -->
+<div id="map"></div>
+
+<!-- LEGEND -->
+<div class="legend" id="legend">
+    <div class="legend-title" id="legend-title">Yağış (mm)</div>
+    <div id="legend-items"></div>
+</div>
+
+<script src="index.js"></script>
+<script>
+// ── VERİ ─────────────────────────────────────────────────────────────────────
+let map, markerLayer, heatLayer;
+let heatmapAktif = false;
+let aktifData = [];
+
+function validNum(v) {
+    if (v === -9999 || v === '-9999' || v === '' || v === null || v === undefined) return null;
+    const n = parseFloat(v);
+    return (!isNaN(n) && n > -9000) ? n : null;
+}
+
+// ── METRİK TANIMLARI ────────────────────────────────────────────────────────
+const METRIKLER = {
+    yagis00Now:  { label: "Yağış 00'dan", unit: 'mm', renk: yagisRenk },
+    yagis1Saat:  { label: 'Yağış 1sa',    unit: 'mm', renk: yagisRenk },
+    yagis6Saat:  { label: 'Yağış 6sa',    unit: 'mm', renk: yagisRenk },
+    yagis12Saat: { label: 'Yağış 12sa',   unit: 'mm', renk: yagisRenk },
+    yagis24Saat: { label: 'Yağış 24sa',   unit: 'mm', renk: yagisRenk },
+    sicaklik:    { label: 'Sıcaklık',     unit: '°C', renk: sicaklikRenk },
+    nem:         { label: 'Nem',          unit: '%',  renk: nemRenk },
+    ruzgarHiz:   { label: 'Rüzgar',       unit: 'km/s', renk: ruzgarRenk },
+    aktuelBasinc:{ label: 'Basınç',       unit: 'hPa', renk: basinçRenk },
+};
+
+function yagisRenk(v) {
+    if (v === null || v === 0) return '#334155';
+    if (v < 1)  return '#38bdf8';
+    if (v < 5)  return '#0ea5e9';
+    if (v < 15) return '#fbbf24';
+    if (v < 30) return '#f97316';
+    return '#ef4444';
+}
+
+function sicaklikRenk(v) {
+    if (v === null) return '#334155';
+    if (v < 0)  return '#818cf8';
+    if (v < 10) return '#38bdf8';
+    if (v < 20) return '#34d399';
+    if (v < 30) return '#fbbf24';
+    return '#ef4444';
+}
+
+function nemRenk(v) {
+    if (v === null) return '#334155';
+    if (v < 30) return '#fbbf24';
+    if (v < 60) return '#34d399';
+    if (v < 80) return '#38bdf8';
+    return '#818cf8';
+}
+
+function ruzgarRenk(v) {
+    if (v === null || v === 0) return '#334155';
+    if (v < 10) return '#34d399';
+    if (v < 30) return '#fbbf24';
+    if (v < 50) return '#f97316';
+    return '#ef4444';
+}
+
+function basinçRenk(v) {
+    if (v === null) return '#334155';
+    if (v < 990)  return '#818cf8';
+    if (v < 1005) return '#38bdf8';
+    if (v < 1015) return '#34d399';
+    return '#fbbf24';
+}
+
+// ── LEGEND ───────────────────────────────────────────────────────────────────
+const LEGEND_TANIMLARI = {
+    yagis: [
+        { renk: '#334155', label: '0 mm' },
+        { renk: '#38bdf8', label: '< 1 mm' },
+        { renk: '#0ea5e9', label: '1-5 mm' },
+        { renk: '#fbbf24', label: '5-15 mm' },
+        { renk: '#f97316', label: '15-30 mm' },
+        { renk: '#ef4444', label: '> 30 mm' },
+    ],
+    sicaklik: [
+        { renk: '#818cf8', label: '< 0°C' },
+        { renk: '#38bdf8', label: '0-10°C' },
+        { renk: '#34d399', label: '10-20°C' },
+        { renk: '#fbbf24', label: '20-30°C' },
+        { renk: '#ef4444', label: '> 30°C' },
+    ],
+    nem: [
+        { renk: '#fbbf24', label: '< 30%' },
+        { renk: '#34d399', label: '30-60%' },
+        { renk: '#38bdf8', label: '60-80%' },
+        { renk: '#818cf8', label: '> 80%' },
+    ],
+    ruzgar: [
+        { renk: '#334155', label: '0 km/s' },
+        { renk: '#34d399', label: '< 10 km/s' },
+        { renk: '#fbbf24', label: '10-30 km/s' },
+        { renk: '#f97316', label: '30-50 km/s' },
+        { renk: '#ef4444', label: '> 50 km/s' },
+    ],
+};
+
+function legendGuncelle(metrik) {
+    const m = METRIKLER[metrik];
+    document.getElementById('legend-title').textContent = m.label + ' (' + m.unit + ')';
+    const items = document.getElementById('legend-items');
+    items.innerHTML = '';
+    let tanimlar;
+    if (metrik.startsWith('yagis')) tanimlar = LEGEND_TANIMLARI.yagis;
+    else if (metrik === 'sicaklik') tanimlar = LEGEND_TANIMLARI.sicaklik;
+    else if (metrik === 'nem') tanimlar = LEGEND_TANIMLARI.nem;
+    else if (metrik === 'ruzgarHiz') tanimlar = LEGEND_TANIMLARI.ruzgar;
+    else { items.innerHTML = ''; return; }
+
+    tanimlar.forEach(t => {
+        items.innerHTML += `<div class="legend-item">
+            <div class="legend-dot" style="background:${t.renk}"></div>
+            <span style="color:#94a3b8;font-size:10px">${t.label}</span>
+        </div>`;
+    });
+}
+
+// ── POPUP ────────────────────────────────────────────────────────────────────
+function popupIcerik(ist) {
+    const vz = ist.veriZamani ? new Date(ist.veriZamani).toLocaleString('tr-TR', {timeZone:'Europe/Istanbul'}) : '-';
+
+    const degerler = [
+        { label: "Yağış 00'dan", val: validNum(ist.yagis00Now), unit: 'mm', renk: yagisRenk },
+        { label: 'Yağış 1sa',   val: validNum(ist.yagis1Saat),  unit: 'mm', renk: yagisRenk },
+        { label: 'Yağış 24sa',  val: validNum(ist.yagis24Saat), unit: 'mm', renk: yagisRenk },
+        { label: 'Sıcaklık',    val: validNum(ist.sicaklik),     unit: '°C', renk: sicaklikRenk },
+        { label: 'Nem',         val: validNum(ist.nem),          unit: '%',  renk: nemRenk },
+        { label: 'Rüzgar',      val: validNum(ist.ruzgarHiz),    unit: 'km/s', renk: ruzgarRenk },
+        { label: 'Basınç',      val: validNum(ist.aktuelBasinc), unit: 'hPa', renk: basinçRenk },
+    ];
+
+    const grid = degerler.map(d => {
+        const v = d.val !== null ? d.val.toFixed(d.unit === '%' || d.unit === '°' ? 0 : 1) : '-';
+        const renk = d.val !== null ? d.renk(d.val) : '#475569';
+        return `<div class="popup-item">
+            <div class="popup-item-label">${d.label}</div>
+            <div class="popup-item-val" style="color:${renk}">${v} <span class="popup-item-unit">${d.unit}</span></div>
+        </div>`;
+    }).join('');
+
+    return `<div class="popup-wrap">
+        <div class="popup-title">${ist.istasyonAdi}</div>
+        <div class="popup-ilce">${ist.ilce || ''} · ${ist.yukseklik ? ist.yukseklik + 'm' : ''}</div>
+        <div class="popup-grid">${grid}</div>
+        <div class="popup-zaman">Veri zamanı: ${vz}</div>
+    </div>`;
+}
+
+// ── MARKER ICON ──────────────────────────────────────────────────────────────
+function markerIcon(renk, val, unit) {
+    const text = val !== null ? (Math.round(val * 10) / 10) + '' : '?';
+    return L.divIcon({
+        className: '',
+        html: `<div style="
+            background: ${renk};
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            width: 36px; height: 36px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px; font-weight: 600;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            cursor: pointer;
+            white-space: nowrap;
+        ">${text}</div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+    });
+}
+
+// ── HARİTAYI GÜNCELLE ────────────────────────────────────────────────────────
+function haritayiGuncelle() {
+    const metrik = document.getElementById('metrik-select').value;
+    const m = METRIKLER[metrik];
+
+    // Eski katmanları temizle
+    if (markerLayer) map.removeLayer(markerLayer);
+    if (heatLayer) map.removeLayer(heatLayer);
+
+    markerLayer = L.layerGroup();
+    const heatData = [];
+
+    aktifData.forEach(ist => {
+        const enlem = parseFloat(ist.enlem);
+        const boylam = parseFloat(ist.boylam);
+        if (!enlem || !boylam) return;
+
+        const val = validNum(ist[metrik]);
+        const renk = m.renk(val);
+
+        const marker = L.marker([enlem, boylam], {
+            icon: markerIcon(renk, val, m.unit)
+        });
+
+        marker.bindPopup(popupIcerik(ist), { maxWidth: 280 });
+        markerLayer.addLayer(marker);
+
+        // Heatmap için
+        if (val !== null && val > 0) {
+            heatData.push([enlem, boylam, val]);
+        }
+    });
+
+    markerLayer.addTo(map);
+
+    // Heatmap katmanı
+    const maxVal = Math.max(...heatData.map(d => d[2]), 1);
+    heatLayer = L.heatLayer(
+        heatData.map(d => [d[0], d[1], d[2] / maxVal]),
+        { radius: 40, blur: 25, maxZoom: 12, gradient: { 0.2: '#38bdf8', 0.5: '#fbbf24', 0.8: '#f97316', 1.0: '#ef4444' } }
+    );
+
+    if (heatmapAktif) heatLayer.addTo(map);
+
+    legendGuncelle(metrik);
+}
+
+function heatmapToggle() {
+    heatmapAktif = !heatmapAktif;
+    document.getElementById('heatmap-btn').classList.toggle('active', heatmapAktif);
+    if (heatmapAktif && heatLayer) heatLayer.addTo(map);
+    else if (heatLayer) map.removeLayer(heatLayer);
+}
+
+// ── ÇEKİM DEĞİŞTİ ───────────────────────────────────────────────────────────
+function cekimDegisti() {
+    const key = document.getElementById('cekim-select').value;
+    if (!key || !CEKIM_ARSIVI[key]) return;
+    aktifData = CEKIM_ARSIVI[key];
+    haritayiGuncelle();
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+function init() {
+    if (typeof CEKIM_ARSIVI === 'undefined') {
+        document.getElementById('loading').innerHTML = '<span style="color:#ef4444">Veri bulunamadı</span>';
+        return;
+    }
+
+    // Haritayı başlat
+    map = L.map('map', {
+        center: [38.42, 27.14],
+        zoom: 9,
+        zoomControl: true,
+    });
+
+    // Karanlık tema harita katmanı
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© OpenStreetMap © CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+    }).addTo(map);
+
+    // Dropdown doldur
+    const select = document.getElementById('cekim-select');
+    const anahtarlar = Object.keys(CEKIM_ARSIVI).sort().reverse();
+    anahtarlar.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k;
+        const m = k.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+        opt.textContent = m ? `${m[3]}.${m[2]}.${m[1]} ${m[4]}:${m[5]}` : k;
+        select.appendChild(opt);
+    });
+
+    // En yeni çekimi yükle
+    aktifData = CEKIM_ARSIVI[anahtarlar[0]];
+    haritayiGuncelle();
+
+    document.getElementById('loading').style.display = 'none';
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
