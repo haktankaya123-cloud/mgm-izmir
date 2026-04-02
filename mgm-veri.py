@@ -68,11 +68,12 @@ def main():
     log(f"─── Çekim başladı [{mod}] ───")
 
     try:
-        # 1. İstasyon bilgilerini çek
+        # 1. İstasyon bilgilerini çek (koordinatlar dahil)
         log("İstasyon bilgileri çekiliyor...")
         ist_r = requests.get(f"{BASE_URL}/istasyonlar/il?plaka=35", headers=HEADERS, timeout=30)
         ist_r.raise_for_status()
-        ist_adi = {i["istNo"]: i["istAd"] for i in ist_r.json()}
+        ist_bilgi = {i["istNo"]: i for i in ist_r.json()}
+        ist_adi = {k: v["istAd"] for k, v in ist_bilgi.items()}
         log(f"{len(ist_adi)} istasyon bilgisi alındı")
 
         # 2. Hava durumu verilerini çek
@@ -87,8 +88,13 @@ def main():
         json_data = []
         for item in data:
             ist_no = item.get("istNo", "")
+            ist = ist_bilgi.get(ist_no, {})
             json_data.append({
                 "istasyonAdi":  ist_adi.get(ist_no, f"Bilinmeyen ({ist_no})"),
+                "enlem":        ist.get("enlem", ""),
+                "boylam":       ist.get("boylam", ""),
+                "yukseklik":    ist.get("yukseklik", ""),
+                "ilce":         ist.get("ilce", ""),
                 "aktuelBasinc": item.get("aktuelBasinc", ""),
                 "yagis00Now":   item.get("yagis00Now", ""),
                 "yagis10Dk":    item.get("yagis10Dk", ""),
