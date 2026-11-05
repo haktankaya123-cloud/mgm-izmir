@@ -3,14 +3,10 @@ import json
 import webbrowser
 import os
 import sys
-import os
-os.environ["TZ"] = "Europe/Istanbul"
-try:
-    import time
-    time.tzset()
-except AttributeError:
-    pass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+# Türkiye saati (UTC+3, yaz saati yok). Bilgisayarın saat dilimi ayarından bağımsız.
+TR = timezone(timedelta(hours=3))
 
 # MGM API ayarları
 BASE_URL = "https://servis.mgm.gov.tr/web"
@@ -36,7 +32,7 @@ GECE_KAYIT    = os.path.join(SCRIPT_DIR, "gece-alinan.txt")  # daha önce eklene
 
 def log(mesaj):
     """Hem terminale hem log dosyasına yazar."""
-    zaman = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    zaman = datetime.now(TR).strftime("%Y-%m-%d %H:%M:%S")
     satir = f"[{zaman}] {mesaj}"
     print(satir)
     try:
@@ -124,7 +120,7 @@ def main():
         log(f"{len(data)} istasyon verisi geldi")
 
         # 3. Veriyi hazırla
-        cekme_zamani = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cekme_zamani = datetime.now(TR).strftime("%Y-%m-%d %H:%M:%S")
         json_data = []
         for item in data:
             ist_no = item.get("istNo", "")
