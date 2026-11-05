@@ -29,6 +29,10 @@ LOG_DOSYASI   = os.path.join(SCRIPT_DIR, "mgm-log.txt")
 # --sessiz: Görev Zamanlayıcı tarafından çağrılınca tarayıcı açılmaz
 SESSIZ = "--sessiz" in sys.argv
 
+# GitHub'ın her gece kaydettiği gece/ dosyaları buradan indirilir
+GECE_REPO     = "haktankaya123-cloud/mgm-izmir"
+GECE_KAYIT    = os.path.join(SCRIPT_DIR, "gece-alinan.txt")  # daha önce eklenen gece dosyaları
+
 
 def log(mesaj):
     """Hem terminale hem log dosyasına yazar."""
@@ -63,9 +67,45 @@ def arsivi_yaz(arsiv):
         f.write(";")
 
 
+def gece_birlestir():
+    """GitHub'daki yeni gece/ dosyalarını indirip index.js arşivine ekler.
+    Hata olursa sadece log'a yazar, normal çekim devam eder."""
+    try:
+        alinan = set()
+        if os.path.exists(GECE_KAYIT):
+            with open(GECE_KAYIT, "r", encoding="utf-8") as f:
+                alinan = {s.strip() for s in f if s.strip()}
+
+        r = requests.get(f"https://api.github.com/repos/{GECE_REPO}/contents/gece", timeout=30)
+        if r.status_code == 404:
+            log("Gece verisi: GitHub'da henüz gece/ klasörü yok (ya da repo private)")
+            return
+        r.raise_for_status()
+        yeniler = sorted((d for d in r.json() if d["name"].endswith(".json") and d["name"] not in alinan),
+                         key=lambda d: d["name"])
+        if not yeniler:
+            return
+
+        arsiv = arsivi_oku()
+        for d in yeniler:
+            g = requests.get(d["download_url"], timeout=30)
+            g.raise_for_status()
+            icerik = g.json()
+            arsiv[icerik["cekmeZamani"]] = icerik["veri"]
+            alinan.add(d["name"])
+        arsivi_yaz(arsiv)
+        with open(GECE_KAYIT, "w", encoding="utf-8") as f:
+            f.write("\n".join(sorted(alinan)) + "\n")
+        log(f"Gece verisi: {len(yeniler)} gece eklendi ({yeniler[0]['name'][:10]} … {yeniler[-1]['name'][:10]})")
+    except Exception as e:
+        log(f"Gece verisi alınamadı (çekim devam ediyor): {e}")
+
+
 def main():
     mod = "OTOMATİK (sessiz)" if SESSIZ else "MANUEL"
     log(f"─── Çekim başladı [{mod}] ───")
+
+    gece_birlestir()
 
     try:
         # 1. İstasyon bilgilerini çek (koordinatlar dahil)

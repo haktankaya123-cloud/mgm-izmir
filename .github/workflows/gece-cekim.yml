@@ -1,0 +1,48 @@
+name: MGM gece cekimi
+
+on:
+  schedule:
+    # UTC saatleri (TR 02:31 / 02:41 / 02:51) — yagis00Now sıfırlanmadan önceki son pencere
+    - cron: "31 23 * * *"
+    - cron: "41 23 * * *"
+    - cron: "51 23 * * *"
+  workflow_dispatch:   # Actions sekmesinden elle deneme
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gece-cekim
+  cancel-in-progress: false
+
+jobs:
+  cek:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            gece-cekim.py
+            gece/
+          sparse-checkout-cone-mode: false
+
+      - name: Gerekli paket
+        run: pip install --quiet requests
+
+      - name: MGM'den cek
+        run: python gece-cekim.py
+
+      - name: Repoya kaydet
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gece/ 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Yeni gece verisi yok."
+          else
+            git commit -m "Gece cekimi $(date -u +%F)"
+            git pull --rebase
+            git push
+          fi

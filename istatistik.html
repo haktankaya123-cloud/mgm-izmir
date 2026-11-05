@@ -227,13 +227,14 @@ function arsivdenGunler() {
         });
     });
 
-    // UTC 08-10 arası veri yoksa o günün tüm çekimlerinden max al (fallback)
+    // Gece (UTC 23:30+) verisi olmayan günlerde o günün tüm çekimlerinden max al (fallback)
+    const geceDolu = new Set(Object.keys(g).filter(t => Object.keys(g[t]).length > 0));
     Object.entries(CEKIM_ARSIVI).forEach(([zaman, kayitlar]) => {
         kayitlar.forEach(k => {
             if (!k.veriZamani) return;
             const veriDate = new Date(k.veriZamani);
             const tarih = veriDate.toISOString().slice(0, 10);
-            if (g[tarih] && Object.keys(g[tarih]).length > 0) return; // zaten dolu
+            if (geceDolu.has(tarih)) return; // gece verisiyle dolu
 
             if (!g[tarih]) g[tarih] = {};
             const v = validNum(k.yagis00Now);
